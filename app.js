@@ -1,5 +1,6 @@
 const feathers = require("@feathersjs/feathers");
-const app = feathers();
+const express = require("@feathersjs/express");
+const socketio = require("@feathersjs/socketio");
 
 class MessageService {
   constructor() {
@@ -25,31 +26,39 @@ class MessageService {
   }
 }
 
-// Register the mssage service on the feathers app
-app.use("messages", new MessageService());
+const app = express(feathers());
 
-// Log every time a new message is made
-app.service("messages").on("created", message => {
-  console.log("A new message has been created", message);
+//JSON body parser
+app.use(express.json());
+// URL-encode params
+app.use(express.urlencoded({ extended: true }));
+// Host static files from current dirname/folder
+app.use(express.static(__dirname));
+// Add REST API support
+app.configure(express.rest());
+// Configure Socket.io real-time APIs
+app.configure(socketio());
+// Register an in-memory messgas service
+app.use("/messages", new MessageService());
+// Register a nicer error handler
+// than the default Express one
+app.use(express.errorHandler());
+
+// Add any real-time connection the the 'everybody' channel
+app.on("connection", connection => {
+  app.channel("everybody").join(connection);
+});
+// Publish all events to the 'everybody' channel
+app.publish(data => app.channel("everybody"));
+
+// Start the server
+app.listen(3030).on("listening", () => {
+  console.log(`Feathers server listening on localhost:3030`);
 });
 
-// A function that creates new messages and then
-// logs all existing mesages
+// For good measuure, create a message so
+// Our API doesn't appear empty
 
-const main = async () => {
-  // Create a new message on our message service
-  await app.service("messages").create({
-    text: "Hello Feathers"
-  });
-
-  await app.service("messages").create({
-    text: "Hello again"
-  });
-
-  // Find all existing messages
-  const messages = await app.service("messages").find();
-
-  console.log("All messages", messages);
-};
-
-main();
+app.service("messages").create({
+  text: "Hello world from the server"
+});
